@@ -154,7 +154,7 @@
           "foreground": "#fb7e14",
           "foreground_templates": ["{{ if gt .Code 0 }}#ff5555{{ end }}"],
           "options": { "always_enabled": true },
-          "template": "\u276f"
+          "template": "\ue285"
         }
       ]
     }
@@ -162,6 +162,6 @@
   "transient_prompt": {
     "foreground": "#fb7e14",
     "background": "transparent",
-    "template": "\u2665 {{ now | date \"15:04:05\" }} \uf252 {{ .Segments.Executiontime.FormattedMs }} {{ if .Segments.Sysinfo.PhysicalTotalMemory }}\uf4bc {{ round .Segments.Sysinfo.PhysicalPercentUsed 0 }}% \uefc5 {{ round (div (sub .Segments.Sysinfo.PhysicalTotalMemory .Segments.Sysinfo.PhysicalAvailableMemory | float64) 1073741824.0) 1 }}/{{ round (div .Segments.Sysinfo.PhysicalTotalMemory 1073741824.0) 0 }}GB{{ end }}{{ if .Segments.Git.HEAD }} \ue725 {{ .Segments.Git.HEAD }}{{ end }}\n\u276f "
+    "template": "<#fb7e14,transparent>\ue0b2</><#292929,#fb7e14> \u2665 {{ now | date \"15:04:05\" }} </><#fb7e14,#3d3d3d>\ue0b2</><#fb7e14,#3d3d3d> \uf252 {{ .Segments.Executiontime.FormattedMs }} </>{{ if .Segments.Sysinfo.PhysicalTotalMemory }}<#3d3d3d,#26C6DA>\ue0b2</><#292929,#26C6DA> \uf4bc {{ round .Segments.Sysinfo.PhysicalPercentUsed 0 }}% \u00b7 \uefc5 {{ round (div (sub .Segments.Sysinfo.PhysicalTotalMemory .Segments.Sysinfo.PhysicalAvailableMemory | float64) 1073741824.0) 1 }}/{{ round (div .Segments.Sysinfo.PhysicalTotalMemory 1073741824.0) 0 }}GB </><#26C6DA,transparent>\ue0b0</>{{ else }}<#3d3d3d,transparent>\ue0b0</>{{ end }}{{ if .Segments.Git.HEAD }}<#D4E157> \ue725 {{ .Segments.Git.HEAD }}</>{{ end }} \ue285 "
   }
 }

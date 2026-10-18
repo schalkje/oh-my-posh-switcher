@@ -51,6 +51,23 @@ function Show-OmpPreview {
         $env:POSH_SESSION_ID = [guid]::NewGuid().ToString()
         [Console]::OutputEncoding = [Text.Encoding]::UTF8
         oh-my-posh print primary --config $Path --shell pwsh --escape=false 2>&1 | Write-Host
+        # The transient prompt reads values from the previous prompt, which a preview doesn't have, so use fake ones
+        $fake = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'omp-preview-' + [guid]::NewGuid().ToString('N') + '.omp.json')
+        $text = [IO.File]::ReadAllText($Path)
+        $text = $text.Replace('.Segments.Executiontime.FormattedMs', '\"1.2s\"').
+            Replace('.Segments.Git.HEAD', '\"main\"').
+            Replace('.Segments.Sysinfo.PhysicalTotalMemory', '34359738368.0').
+            Replace('.Segments.Sysinfo.PhysicalAvailableMemory', '17179869184.0').
+            Replace('.Segments.Sysinfo.PhysicalPercentUsed', '50.0')
+        [IO.File]::WriteAllText($fake, $text)
+        $transient = oh-my-posh print transient --config $fake --shell pwsh --escape=false --terminal-width ([Math]::Max(40, $Host.UI.RawUI.WindowSize.Width)) --status 0 2>&1
+        Remove-Item $fake -ErrorAction SilentlyContinue
+        # Drop the cursor and line-clear codes the shell integration uses
+        $transient = ($transient -join '') -replace "`e7|`e8|`e\[K|`e\[0J|`e\]7777;\d+", ''
+        if ($transient.Trim()) {
+            Write-Host '  after command:' -ForegroundColor DarkGray
+            Write-Host $transient
+        }
         Write-Host ''
     }
     catch { Write-Warning "Preview failed: $_" }

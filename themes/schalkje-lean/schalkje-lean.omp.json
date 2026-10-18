@@ -90,7 +90,7 @@
           "foreground": "#fb7e14",
           "foreground_templates": ["{{ if gt .Code 0 }}#ff5555{{ end }}"],
           "options": { "always_enabled": true },
-          "template": "\u276f"
+          "template": "\ue285"
         }
       ]
     }
@@ -98,6 +98,6 @@
   "transient_prompt": {
     "foreground": "#fb7e14",
     "background": "transparent",
-    "template": "\u2665 {{ now | date \"15:04:05\" }} \uf252 {{ .Segments.Executiontime.FormattedMs }}{{ if .Segments.Git.HEAD }} \ue725 {{ .Segments.Git.HEAD }}{{ end }} \u276f "
+    "template": "\u2665 {{ now | date \"15:04:05\" }} \uf252 {{ .Segments.Executiontime.FormattedMs }}{{ if .Segments.Git.HEAD }} \ue725 {{ .Segments.Git.HEAD }}{{ end }} \ue285 "
   }
 }
