@@ -1,0 +1,167 @@
+{
+  "$schema": "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json",
+  "version": 4,
+  "final_space": true,
+  "console_title_template": "{{ .Folder }}",
+  "blocks": [
+    {
+      "type": "prompt",
+      "alignment": "left",
+      "segments": [
+        {
+          "type": "os",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "<transparent,#292929>\ue0b2</>",
+          "foreground": "#fb7e14",
+          "background": "#292929",
+          "template": " {{ if .WSL }}WSL at {{ end }}{{ .Icon }} "
+        },
+        {
+          "type": "root",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "<transparent,#ffff66>\ue0b2</>",
+          "foreground": "#292929",
+          "background": "#ffff66",
+          "template": " \uf0e7 "
+        },
+        {
+          "type": "time",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "<transparent,#fb7e14>\ue0b2</>",
+          "foreground": "#292929",
+          "background": "#fb7e14",
+          "options": { "time_format": "15:04:05" },
+          "template": " \u2665 {{ .CurrentDate | date .Format }} "
+        },
+        {
+          "type": "sysinfo",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "<transparent,#26C6DA>\ue0b2</>",
+          "foreground": "#292929",
+          "background": "#26C6DA",
+          "options": { "precision": 0 },
+          "template": " \uf4bc {{ round .PhysicalPercentUsed .Precision }}% \u00b7 \uefc5 {{ round (div (sub .PhysicalTotalMemory .PhysicalAvailableMemory | float64) 1073741824.0) 1 }}/{{ round (div .PhysicalTotalMemory 1073741824.0) 0 }}GB "
+        },
+        {
+          "type": "executiontime",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "\ue0b0",
+          "foreground": "#fb7e14",
+          "background": "#3d3d3d",
+          "options": { "always_enabled": true, "style": "austin", "threshold": 0 },
+          "template": " \uf252 {{ .FormattedMs }} "
+        }
+      ]
+    },
+    {
+      "type": "prompt",
+      "alignment": "right",
+      "segments": [
+        {
+          "type": "session",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "<transparent,#292929>\ue0b2</>",
+          "foreground": "#fb7e14",
+          "background": "#292929",
+          "template": " {{ if .SSHSession }}\ueba9 {{ end }}{{ .UserName }}@{{ .HostName }} "
+        },
+        {
+          "type": "battery",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "<transparent,#40c4ff>\ue0b2</>",
+          "foreground": "#292929",
+          "background": "#40c4ff",
+          "options": { "charged_icon": "\uf240 ", "charging_icon": "\ueb2d ", "discharging_icon": "\ueb2d " },
+          "template": " {{ if not .Error }}{{ .Icon }}{{ .Percentage }}%{{ end }}{{ .Error }} "
+        },
+        {
+          "type": "python",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "<transparent,#FFDE57>\ue0b2</>",
+          "foreground": "#292929",
+          "background": "#FFDE57",
+          "options": { "display_mode": "files", "fetch_virtual_env": false },
+          "template": " \ue235 {{ .Full }} "
+        },
+        {
+          "type": "go",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "<transparent,#00acd7>\ue0b2</>",
+          "foreground": "#292929",
+          "background": "#00acd7",
+          "template": " \ue627 {{ .Full }} "
+        },
+        {
+          "type": "node",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "\ue0b0",
+          "foreground": "#292929",
+          "background": "#D4E157",
+          "template": " \ue718 {{ .Full }} "
+        }
+      ]
+    },
+    {
+      "type": "prompt",
+      "alignment": "left",
+      "newline": true,
+      "segments": [
+        {
+          "type": "path",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "<transparent,#292929>\ue0b2</>",
+          "foreground": "#fb7e14",
+          "background": "#292929",
+          "options": { "style": "agnoster_short", "max_depth": 4, "home_icon": "~", "folder_icon": "\u2026" },
+          "template": " \uf07b {{ .Path }} "
+        },
+        {
+          "type": "git",
+          "style": "diamond",
+          "leading_diamond": "\ue0b2",
+          "trailing_diamond": "\ue0b0",
+          "foreground": "#D4E157",
+          "foreground_templates": [
+            "{{ if or (.Working.Changed) (.Staging.Changed) }}#ff79c6{{ end }}",
+            "{{ if and (gt .Ahead 0) (gt .Behind 0) }}#f26d50{{ end }}",
+            "{{ if or (gt .Ahead 0) (gt .Behind 0) }}#26C6DA{{ end }}"
+          ],
+          "background": "#292929",
+          "options": { "branch_icon": "\ue725 ", "fetch_status": true, "fetch_upstream_icon": true },
+          "template": " {{ .UpstreamIcon }}{{ .HEAD }}{{ if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uf044 {{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }} \uf046 {{ .Staging.String }}{{ end }}{{ if gt .StashCount 0 }} \ueb4b {{ .StashCount }}{{ end }} "
+        }
+      ]
+    },
+    {
+      "type": "prompt",
+      "alignment": "left",
+      "newline": true,
+      "segments": [
+        {
+          "type": "status",
+          "style": "plain",
+          "foreground": "#fb7e14",
+          "foreground_templates": ["{{ if gt .Code 0 }}#ff5555{{ end }}"],
+          "options": { "always_enabled": true },
+          "template": "\u276f"
+        }
+      ]
+    }
+  ],
+  "transient_prompt": {
+    "foreground": "#fb7e14",
+    "background": "transparent",
+    "template": "\u2665 {{ now | date \"15:04:05\" }} \uf252 {{ .Segments.Executiontime.FormattedMs }} {{ if .Segments.Sysinfo.PhysicalTotalMemory }}\uf4bc {{ round .Segments.Sysinfo.PhysicalPercentUsed 0 }}% \uefc5 {{ round (div (sub .Segments.Sysinfo.PhysicalTotalMemory .Segments.Sysinfo.PhysicalAvailableMemory | float64) 1073741824.0) 1 }}/{{ round (div .Segments.Sysinfo.PhysicalTotalMemory 1073741824.0) 0 }}GB{{ end }}{{ if .Segments.Git.HEAD }} \ue725 {{ .Segments.Git.HEAD }}{{ end }}\n\u276f "
+  }
+}

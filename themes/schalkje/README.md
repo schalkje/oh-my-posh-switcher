@@ -1,55 +1,42 @@
-# schalkje – custom oh-my-posh theme
+# schalkje
 
-Tokyo-night style powerline prompt: OS, user, path, git (colour changes with state), right side with execution time / node / python / clock, and a `❯` on line two that turns red after a failed command.
+Default variant. Two lines, everything useful on the first line, the cursor on `❯` on its own line.
 
-## Try it
-```powershell
-omp-list schalkje -Preview   # preview
-omp-set schalkje             # apply (picked up automatically by the switcher)
+File: `schalkje.omp.json` · oh-my-posh config `version: 4`, `final_space: true`, `console_title_template: {{ .Folder }}`.
+General building blocks, palette and resources: see [`..\README.md`](..\README.md).
+
+## Palette
+bg `#292929` · orange `#fb7e14` · cyan `#26C6DA` · lime `#D4E157` · blue `#40c4ff` · grey `#3d3d3d` · error `#ff5555` · elevated `#ffff66`
+Dark text (`#292929`) on coloured blocks, orange text on dark blocks.
+
+## Layout
 ```
+ os  ⚡ path  ♥ time  cpu% · mem GB  duration            ‹node› ‹branch›
+❯ style (Wholespace): every segment is `style: diamond` with `leading_diamond` `\ue0b2` and `trailing_diamond` `<transparent,BG>\ue0b2</>` (BG = the segment's own background), so blocks are visibly separated. The last segment of a block ends with `\ue0b0`.
 
-## Tweak it
-Each entry in `segments` is one block. Change `background`/`foreground` (hex), `template` (what text shows), or add segments from https://ohmyposh.dev/docs/configuration/segment. Edit, re-run the preview, repeat.
+### Block 1 – prompt, left
+| # | Segment | fg / bg | Notes |
+|---|---|---|---|
+| 1 | `os` | orange / bg | `WSL at` prefix inside WSL |
+| 2 | `root` | bg / `#ffff66` | only visible when elevated, bolt `\uf0e7` |
+| 3 | `path` | bg / lime | `agnoster_short`, `max_depth: 2`, home `~`, folder icon `…` |
+| 4 | `time` | bg / orange | `15:04:05`, heart `\u2665` |
+| 5 | `sysinfo` | bg / cyan | `CPU %` · `used/total GB` |
+| 6 | `executiontime` | orange / grey | `always_enabled`, threshold 0, style `austin`; last, trailing `\ue0b0` |
 
+### Block 2 – prompt, right
+| # | Segment | fg / bg | Notes |
+|---|---|---|---|
+| 1 | `node` | bg / blue | only inside node projects |
+| 2 | `git` | lime / `#292929` | text colour via `foreground_templates`: clean lime, dirty `#ff79c6`, ahead/behind cyan, ahead+behind `#f26d50`; shows upstream icon, branch, status, stash; last, trailing `\ue0b0` |
 
-## Prompt description
+### Block 3 – input line (`newline: true`)
+`status` segment, template `❯`, **orange**, red when `.Code > 0`, `always_enabled`.
 
-Create 3 variations and take the input below into account:
-
-- schalkje
-- schalkje-lean
-- schalkje-full
-
-Each of these themes get's their own folder; 
-
-On the themes folder, create a readme with instructions, possibilities and resources that you use creating the themes, like:
-- https://ohmyposh.dev/docs/configuration/segment
-- https://ohmyposh.dev/docs/configuration/colors
-- https://ohmyposh.dev/docs/configuration/block
-etc
-
-Each of the themes have a readme, describing how the theme is build, so we can tweak the readme, to regenerate the theme
-
-
-### Elements
-- cpu usage
-- memory x/yGB
-- current time
-- duration
-- identification of elevated like in in Powerlevel10k_rainbow
-
-- git folder
-
-### Layout
-The prompt can be multiline
-
-I really like the feel of wholespace;
-- the fact that the prompt changes after send if nice; but I want the usefull information to stick around; e.g. the folder can go; but time, duration, cpu, mem, branch should stick around 
-- I like the blocks with the separators
-- I do not like the long folder with the heart at the end, I rather have an extra line with >
-
-The place where I start typing is close to the left side, like with lambdageneration and Powerlevel10k_rainbow
-
-I likethe color scheme from lambdageneration, but need you creativity to fit this in with the blocks and colors of wholespace
-
-
+## Transient prompt
+Colour orange, transparent background. After pressing Enter the whole prompt collapses to:
+```
+♥ <time> <duration> [<cpu% mem/totalGB>] [ <branch>]
+❯
+```
+Path is dropped; time (`now | date`), duration (`.Segments.Executiontime.FormattedMs`), CPU/mem (`.Segments.Sysinfo.*`) and branch (`.Segments.Git.HEAD`) stay. Parts are guarded with `{{ if }}` so they vanish if unavailable.
