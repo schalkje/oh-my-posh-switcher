@@ -10,8 +10,13 @@ function Get-OmpThemesDir {
 
 function Get-OmpThemeFile {
     param([string]$Name)
-    $files = Get-ChildItem -LiteralPath (Get-OmpThemesDir) -File |
-        Where-Object { $_.Name -match '\.omp\.(json|ya?ml|toml)$' }
+    # Custom themes shipped with this repo (.\themes\**) take precedence over same-named downloaded ones
+    $custom = Join-Path $PSScriptRoot 'themes'
+    $files = @()
+    if (Test-Path -LiteralPath $custom) { $files += Get-ChildItem -LiteralPath $custom -File -Recurse }
+    $files += Get-ChildItem -LiteralPath (Get-OmpThemesDir) -File
+    $files = $files | Where-Object { $_.Name -match '\.omp\.(json|ya?ml|toml)$' } |
+        Group-Object Name | ForEach-Object { $_.Group[0] }
     if ($Name) {
         $n = $Name -replace '\.omp\.(json|ya?ml|toml)$', ''
         $files = $files | Where-Object { ($_.Name -replace '\.omp\.(json|ya?ml|toml)$', '') -like $n }

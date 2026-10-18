@@ -52,5 +52,8 @@ omp-list -Preview                # see them all
 - **Previews:** rendered with `oh-my-posh print primary`, using a fresh session id (otherwise oh-my-posh reuses the active theme) and UTF-8 output.
 - **Downloads:** GitHub contents API; existing files are skipped unless `-Force`. Set `$env:GITHUB_TOKEN` to avoid the unauthenticated rate limit (60 requests/hour).
 
+## Custom themes
+Your own themes live in `themes\<name>\` (see `themes\README.md`). The switcher scans that folder automatically, so they appear alongside the downloaded ones.
+
 ## Notes
 - Running the script directly (not dot-sourced) saves the theme for new shells but won't change the current prompt; use `omp-theme` / `omp-set` for that.
