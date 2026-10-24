@@ -1,11 +1,72 @@
 # Oh-My-Posh theme switcher. Dot-source from $PROFILE:  . <path>\OmpThemes.ps1
-# Themes folder: $env:OMP_THEMES_DIR (fallback: ~\.config\ohmyposh)
+# Themes folder: $env:OMP_THEMES_DIR (fallback: ~\.config\ohmyposh), plus .\themes\** and $env:POSH_THEMES_PATH
+# Requires the standalone oh-my-posh binary; the deprecated PowerShell module (v3) is detected and an upgrade offered.
 
 function Get-OmpThemesDir {
     $dir = if ($env:OMP_THEMES_DIR) { $env:OMP_THEMES_DIR } else { Join-Path $HOME '.config\ohmyposh' }
     $dir = [Environment]::ExpandEnvironmentVariables($dir)
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     $dir
+}
+
+function Get-OmpExe {
+    # Resolve the oh-my-posh executable once. Besides PATH, look in the folders the usual installers use;
+    # if found there, prepend that folder to PATH so the profile's `oh-my-posh init pwsh` line works too.
+    if ($script:OmpExe -and (Test-Path -LiteralPath $script:OmpExe)) { return $script:OmpExe }
+    $cmd = Get-Command oh-my-posh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($cmd) { $script:OmpExe = $cmd.Source; return $script:OmpExe }
+    $candidates = @(
+        "$env:LOCALAPPDATA\Programs\oh-my-posh\bin\oh-my-posh.exe"   # installer (user scope)
+        "$env:LOCALAPPDATA\Microsoft\WinGet\Links\oh-my-posh.exe"    # winget portable package
+        "$env:ProgramFiles\oh-my-posh\bin\oh-my-posh.exe"            # installer (machine scope)
+        "$HOME\scoop\apps\oh-my-posh\current\oh-my-posh.exe"         # scoop
+        "$env:ChocolateyInstall\bin\oh-my-posh.exe"                  # chocolatey
+        '/usr/local/bin/oh-my-posh', '/opt/homebrew/bin/oh-my-posh', "$HOME/.local/bin/oh-my-posh"
+    ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+    if ($candidates) {
+        $script:OmpExe = $candidates[0]
+        $env:Path = (Split-Path $script:OmpExe) + [IO.Path]::PathSeparator + $env:Path
+        return $script:OmpExe
+    }
+    $legacy = Get-Module -ListAvailable oh-my-posh -ErrorAction SilentlyContinue | Select-Object -First 1
+    $hint = if ($legacy) {
+        "Only the deprecated oh-my-posh PowerShell module v$($legacy.Version) was found ($($legacy.ModuleBase)). " +
+        "Its bundled v3 binary cannot render current themes."
+    } else { 'oh-my-posh is not installed.' }
+    throw "$hint Run Install-OhMyPosh (or: winget install JanDeDobbeleer.OhMyPosh -s winget) and open a new shell."
+}
+
+function Get-OmpVersion {
+    try { (& (Get-OmpExe) version 2>$null | Select-Object -First 1) } catch { $null }
+}
+
+function Install-OhMyPosh {
+    # Install or upgrade the standalone oh-my-posh binary (the supported distribution) via winget,
+    # then make it usable in this session. Replaces the deprecated `Import-Module oh-my-posh` setup.
+    [CmdletBinding()]
+    param([switch]$RemoveLegacyModule)
+    if (-not $IsWindows) { Write-Error 'Install-OhMyPosh only automates Windows (winget); see https://ohmyposh.dev/docs/installation'; return }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { Write-Error 'winget not found; install oh-my-posh manually: https://ohmyposh.dev/docs/installation/windows'; return }
+    $before = Get-OmpVersion
+    $verb = if ($before) { 'upgrade' } else { 'install' }
+    Write-Host "winget $verb JanDeDobbeleer.OhMyPosh ..." -ForegroundColor Cyan
+    winget $verb JanDeDobbeleer.OhMyPosh -s winget --accept-source-agreements --accept-package-agreements | Out-Host
+    # Pick up the PATH change the installer made without opening a new shell
+    $env:Path = @([Environment]::GetEnvironmentVariable('Path', 'Machine'), [Environment]::GetEnvironmentVariable('Path', 'User')) -join [IO.Path]::PathSeparator
+    if (-not $env:POSH_THEMES_PATH) { $env:POSH_THEMES_PATH = [Environment]::GetEnvironmentVariable('POSH_THEMES_PATH', 'User') }
+    $script:OmpExe = $null
+    $after = Get-OmpVersion
+    if (-not $after) { Write-Error 'oh-my-posh still not found after install; open a new shell and retry.'; return }
+    Write-Host "oh-my-posh $after at $(Get-OmpExe)" -ForegroundColor Green
+    $legacy = Get-Module -ListAvailable oh-my-posh -ErrorAction SilentlyContinue
+    if ($legacy) {
+        if ($RemoveLegacyModule) {
+            Get-Module oh-my-posh | Remove-Module -Force -ErrorAction SilentlyContinue
+            Uninstall-Module oh-my-posh -AllVersions -Force -ErrorAction Continue
+        } else {
+            Write-Host "Deprecated PowerShell module oh-my-posh v$($legacy.Version) is still installed; remove it with:  Uninstall-Module oh-my-posh -AllVersions" -ForegroundColor Yellow
+        }
+    }
 }
 
 function Get-OmpThemeFile {
@@ -15,6 +76,8 @@ function Get-OmpThemeFile {
     $files = @()
     if (Test-Path -LiteralPath $custom) { $files += Get-ChildItem -LiteralPath $custom -File -Recurse }
     $files += Get-ChildItem -LiteralPath (Get-OmpThemesDir) -File
+    # Stock themes shipped with the standalone install (POSH_THEMES_PATH is set by the installer)
+    if ($env:POSH_THEMES_PATH -and (Test-Path -LiteralPath $env:POSH_THEMES_PATH)) { $files += Get-ChildItem -LiteralPath $env:POSH_THEMES_PATH -File }
     $files = $files | Where-Object { $_.Name -match '\.omp\.(json|ya?ml|toml)$' } |
         Group-Object Name | ForEach-Object { $_.Group[0] }
     if ($Name) {
@@ -50,7 +113,7 @@ function Show-OmpPreview {
     try {
         $env:POSH_SESSION_ID = [guid]::NewGuid().ToString()
         [Console]::OutputEncoding = [Text.Encoding]::UTF8
-        oh-my-posh print primary --config $Path --shell pwsh --escape=false 2>&1 | Write-Host
+        & (Get-OmpExe) print primary --config $Path --shell pwsh --escape=false 2>&1 | Write-Host
         # The transient prompt reads values from the previous prompt, which a preview doesn't have, so use fake ones
         $fake = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'omp-preview-' + [guid]::NewGuid().ToString('N') + '.omp.json')
         $text = [IO.File]::ReadAllText($Path)
@@ -60,7 +123,7 @@ function Show-OmpPreview {
             Replace('.Segments.Sysinfo.PhysicalAvailableMemory', '17179869184.0').
             Replace('.Segments.Sysinfo.PhysicalPercentUsed', '50.0')
         [IO.File]::WriteAllText($fake, $text)
-        $transient = oh-my-posh print transient --config $fake --shell pwsh --escape=false --terminal-width ([Math]::Max(40, $Host.UI.RawUI.WindowSize.Width)) --status 0 2>&1
+        $transient = & (Get-OmpExe) print transient --config $fake --shell pwsh --escape=false --terminal-width ([Math]::Max(40, $Host.UI.RawUI.WindowSize.Width)) --status 0 2>&1
         Remove-Item $fake -ErrorAction SilentlyContinue
         # Drop the cursor and line-clear codes the shell integration uses
         $transient = ($transient -join '') -replace "`e7|`e8|`e\[K|`e\[0J|`e\]7777;\d+", ''
@@ -84,6 +147,10 @@ function Set-OmpProfileTheme {
     if (-not (Test-Path $prof)) { New-Item -ItemType File -Path $prof -Force | Out-Null }
     Copy-Item $prof "$prof.bak" -Force
     $lines = @(Get-Content $prof)
+    # Lines from the deprecated PowerShell module (Import-Module oh-my-posh / Set-PoshPrompt) would set a v3 prompt
+    # first, or fail once that module is removed, so comment them out
+    $legacy = '^\s*(Import-Module\s+(-Name\s+)?[''"]?oh-my-posh[''"]?\s*$|Set-PoshPrompt\b)'
+    $lines = @(foreach ($l in $lines) { if ($l -match $legacy) { "# $l  # legacy oh-my-posh module, disabled by OmpThemes.ps1" } else { $l } })
     $idx = for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^\s*oh-my-posh\s+init\s+pwsh') { $i } }
     if ($idx) {
         $lines[$idx[0]] = $line
@@ -100,7 +167,8 @@ function Set-OmpTheme {
         Write-Error $(if ($f.Count) { "Ambiguous name '$Name': $($f.Name -join ', ')" } else { "Theme '$Name' not found in $(Get-OmpThemesDir)" })
         return
     }
-    oh-my-posh init pwsh --config $f[0].FullName | Invoke-Expression
+    try { $omp = Get-OmpExe } catch { Write-Error $_; return }
+    & $omp init pwsh --config $f[0].FullName | Invoke-Expression
     $env:POSH_CONFIG = $f[0].FullName
     if (-not $NoPersist) { Set-OmpProfileTheme $f[0].FullName; Write-Host "Theme '$Name' applied and saved to profile." -ForegroundColor Green }
 }
@@ -175,6 +243,7 @@ Set-Alias omp-theme Select-OmpTheme
 Set-Alias omp-list Get-OmpTheme
 Set-Alias omp-set Set-OmpTheme
 Set-Alias omp-install Install-OmpTheme
+Set-Alias omp-upgrade Install-OhMyPosh
 
 function Show-OmpHelp {
     Write-Host @"
@@ -184,6 +253,7 @@ function Show-OmpHelp {
   Themes folder : $(Get-OmpThemesDir)
                   (change with `$env:OMP_THEMES_DIR; default ~\.config\ohmyposh)
   Current theme : $(if ($env:POSH_CONFIG) { Split-Path $env:POSH_CONFIG -Leaf } else { '(unknown)' })
+  oh-my-posh    : $(try { "v$(Get-OmpVersion)  ($(Get-OmpExe))" } catch { 'NOT FOUND - run omp-upgrade' })
 
   Menu:   run  .\OmpThemes.ps1   (or  omp-menu  once loaded from your profile)
   Direct commands (after dot-sourcing in `$PROFILE):
@@ -192,6 +262,8 @@ function Show-OmpHelp {
     omp-set <name>        switch theme (Tab completes); saved to profile
     omp-install [names]   list/download themes from GitHub
                           (-All, -Force, -Apply)
+    omp-upgrade           install/upgrade the oh-my-posh binary via winget
+                          (-RemoveLegacyModule also drops the old PS module)
 
   Notes: previews need a Nerd Font. Switching in the menu only affects the
   profile for new shells; use  omp-set  / dot-source to change the live shell.
@@ -210,12 +282,14 @@ function Show-OmpMenu {
         Write-Host '  |      OH-MY-POSH  THEME  SWITCHER       |' -ForegroundColor Cyan
         Write-Host '  +----------------------------------------+' -ForegroundColor Cyan
         Write-Host "  Folder  : $(Get-OmpThemesDir)"
-        Write-Host "  Current : $cur     Installed: $count themes`n"
+        $ver = try { "v$(Get-OmpVersion)" } catch { 'NOT FOUND (use option 6)' }
+        Write-Host "  Current : $cur     Installed: $count themes     oh-my-posh: $ver`n"
         Write-Host '  [1] Browse & switch theme (live preview)'
         Write-Host '  [2] List installed themes'
         Write-Host '  [3] Preview all installed themes'
         Write-Host '  [4] Download themes from GitHub'
         Write-Host '  [5] Help / how it works'
+        Write-Host '  [6] Install / upgrade oh-my-posh (winget)'
         Write-Host '  [Q] Quit' -ForegroundColor DarkGray
         $c = (Read-Host "`n  Choose").Trim().ToUpper()
         switch ($c) {
@@ -238,6 +312,7 @@ function Show-OmpMenu {
                 Read-Host '  Enter to continue' | Out-Null
             }
             '5' { Show-OmpHelp; Read-Host '  Enter to continue' | Out-Null }
+            '6' { Install-OhMyPosh; Read-Host '  Enter to continue' | Out-Null }
             { $_ -in 'Q', '' } { return }
         }
     }
@@ -245,6 +320,8 @@ function Show-OmpMenu {
 
 Set-Alias omp-menu Show-OmpMenu
 Set-Alias omp-help Show-OmpHelp
+
+try { Get-OmpExe | Out-Null } catch { Write-Warning $_ }
 
 # Run the menu when executed directly (.\OmpThemes.ps1) but not when dot-sourced
 if ($MyInvocation.InvocationName -ne '.') { Show-OmpMenu }
