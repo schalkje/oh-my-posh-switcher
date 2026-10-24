@@ -69,6 +69,116 @@ function Install-OhMyPosh {
     }
 }
 
+function Get-OmpNerdFont {
+    # Installed Nerd Font files from the font registry (user + machine). v3 families are "<Name> Nerd Font [Mono|Propo]"
+    # or the short "<Name> NF/NFM/NFP"; v2 files ("... Nerd Font Complete [Mono] [Windows Compatible]") lack the
+    # newer glyphs and, since they register under the same family name, must go when a v3 version is installed.
+    foreach ($hive in 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts', 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts') {
+        $key = Get-Item -LiteralPath $hive -ErrorAction SilentlyContinue
+        if (-not $key) { continue }
+        foreach ($n in $key.GetValueNames()) {
+            if ($n -notmatch 'Nerd Font|\bNF[MP]?\b') { continue }
+            $file = $key.GetValue($n)
+            if ($file -and -not [IO.Path]::IsPathRooted($file)) { $file = Join-Path $env:windir 'Fonts' $file }
+            $family = $n -replace '\s*\((TrueType|OpenType)\)\s*$', ''
+            while ($family -match '\s(Regular|Bold|Italic|Light|ExtraLight|SemiLight|SemiBold|Medium|Thin|Black|Heavy|Retina|Oblique|Book)$') { $family = $family -replace '\s\w+$', '' }
+            $legacy = $n -match 'Nerd Font Complete'
+            if ($legacy -and $file -and (Test-Path -LiteralPath $file)) {
+                # v2 registry names differ from the family inside the file (which is what terminals match), so read it
+                try { Add-Type -AssemblyName System.Drawing; $pfc = [System.Drawing.Text.PrivateFontCollection]::new(); $pfc.AddFontFile($file); if ($pfc.Families) { $family = $pfc.Families[0].Name }; $pfc.Dispose() } catch {}
+            }
+            [pscustomobject]@{ Family = $family; Name = $n; File = $file; Hive = $hive; Legacy = $legacy }
+        }
+    }
+}
+
+function Remove-OmpLegacyFont {
+    # Unregister v2 Nerd Font files and move them to a backup folder (kept next to the themes dir)
+    param([Parameter(Mandatory)][object[]]$Entry)
+    $backup = Join-Path (Get-OmpThemesDir) 'font-backup'
+    New-Item -ItemType Directory -Path $backup -Force | Out-Null
+    if (-not ('OmpFontApi' -as [type])) {
+        Add-Type -Namespace OmpFontApi -Name Gdi -MemberDefinition @'
+[DllImport("gdi32.dll", CharSet = CharSet.Unicode)] public static extern bool RemoveFontResourceW(string file);
+[DllImport("user32.dll")] public static extern int SendMessageTimeout(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint t, out IntPtr r);
+'@ -ErrorAction SilentlyContinue
+    }
+    foreach ($e in $Entry) {
+        try {
+            if ($e.Hive -like 'HKLM*') { Write-Warning "Skipping machine-wide font '$($e.Name)' (needs admin): $($e.File)"; continue }
+            if ($e.File -and (Test-Path -LiteralPath $e.File)) {
+                try { [OmpFontApi.Gdi]::RemoveFontResourceW($e.File) | Out-Null } catch {}
+                Move-Item -LiteralPath $e.File -Destination (Join-Path $backup (Split-Path $e.File -Leaf)) -Force
+            }
+            Remove-ItemProperty -LiteralPath $e.Hive -Name $e.Name -ErrorAction Stop
+            Write-Host "Removed old font '$($e.Name)' (backup in $backup)" -ForegroundColor Green
+        } catch { Write-Warning "Could not remove '$($e.Name)': $_ (a file in use is freed after sign-out; remove it via Settings > Fonts)" }
+    }
+    try { $r = [IntPtr]::Zero; [OmpFontApi.Gdi]::SendMessageTimeout([IntPtr]0xFFFF, 0x1D, [IntPtr]::Zero, [IntPtr]::Zero, 2, 1000, [ref]$r) | Out-Null } catch {}   # WM_FONTCHANGE
+}
+
+function Set-OmpTerminalFont {
+    # Point Windows Terminal at a font family: profiles.defaults, plus every profile that already overrides
+    # its font with a Nerd Font (an old "NF" variant, typically). Other explicit fonts are left alone.
+    param([Parameter(Mandatory)][string]$Family)
+    $settings = @(
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json"
+        "$env:LOCALAPPDATA\Microsoft\Windows Terminal\settings.json"
+    ) | Where-Object { Test-Path -LiteralPath $_ }
+    if (-not $settings) { Write-Host "Windows Terminal settings not found; set your terminal font to '$Family' by hand." -ForegroundColor Yellow; return }
+    foreach ($file in $settings) {
+        try {
+            $json = Get-Content -LiteralPath $file -Raw | ConvertFrom-Json
+            if (-not $json.profiles.defaults) { $json.profiles | Add-Member -NotePropertyName defaults -NotePropertyValue ([pscustomobject]@{}) -Force }
+            $touched = @()
+            $targets = @($json.profiles.defaults) + @($json.profiles.list | Where-Object { "$($_.font.face)$($_.fontFace)" -match 'Nerd Font|\bNF[MP]?\b' })
+            foreach ($t in $targets) {
+                if ($t.PSObject.Properties['fontFace']) { $t.PSObject.Properties.Remove('fontFace') }   # pre-1.10 key
+                if (-not $t.font) { $t | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force }
+                if ($t.font.PSObject.Properties['face']) { $t.font.face = $Family } else { $t.font | Add-Member -NotePropertyName face -NotePropertyValue $Family }
+                $touched += $(if ($t.name) { $t.name } else { 'defaults' })
+            }
+            Copy-Item -LiteralPath $file "$file.bak" -Force
+            $json | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $file -Encoding UTF8
+            Write-Host "Windows Terminal font set to '$Family' ($($touched -join ', ')) in $file" -ForegroundColor Green
+        } catch { Write-Warning "Could not update $file ($_); set the font to '$Family' in Windows Terminal > Settings > Defaults > Appearance." }
+    }
+    Write-Host "Other terminals: VS Code -> `"terminal.integrated.fontFamily`": `"$Family`"" -ForegroundColor DarkGray
+}
+
+function Install-OmpFont {
+    # Install a Nerd Font with oh-my-posh's built-in installer and make Windows Terminal use it.
+    # Themes need Nerd Fonts v3 glyphs; the old v2 "... NF" fonts show boxes for the newer icons.
+    # No -Name opens oh-my-posh's interactive font picker. Names: oh-my-posh font list
+    [CmdletBinding()]
+    param([Parameter(Position = 0)][string]$Name, [switch]$NoTerminalConfig, [switch]$RemoveOldVersions)
+    try { $omp = Get-OmpExe } catch { Write-Error $_; return }
+    $before = @(Get-OmpNerdFont)
+    $reported = @()
+    if ($Name) {
+        # oh-my-posh lists the installed families ("  • CaskaydiaCove NF"); the download name often differs from
+        # the family name (CascadiaCode -> CaskaydiaCove, Meslo -> MesloLGM), so capture that list
+        & $omp font install $Name 2>&1 | ForEach-Object { Write-Host $_; if (($_ -replace '\x1b\[[0-9;]*[A-Za-z]|\x1b\][^\x1b\x07]*(\x1b\\|\x07)', '') -match '\u2022\s*([^\x1b]+?)\s*$') { $reported += $Matches[1] } }
+    } else { & $omp font install }   # interactive picker needs the console
+    if ($LASTEXITCODE -ne 0) { Write-Error "Font install failed (exit $LASTEXITCODE). Names: oh-my-posh font list"; return }
+    $all = @(Get-OmpNerdFont)
+    $families = @($all | Where-Object { -not $_.Legacy -and ($_.Name -notin $before.Name -or $_.Family -in $reported) } | ForEach-Object Family | Sort-Object -Unique)
+    if (-not $families) { Write-Host 'No Nerd Font files registered; check the output above.' -ForegroundColor Yellow; return }
+    # Prefer the regular variant (wide glyphs); Mono (NFM) squeezes icons into one cell, Propo (NFP) is for editors
+    $family = ($families | Where-Object { $_ -match '(Nerd Font|\bNF)$' } | Select-Object -First 1)
+    if (-not $family) { $family = $families[0] }
+    Write-Host "Installed: $($families -join ', ')" -ForegroundColor Green
+    # v2 files of the same family would shadow the new ones
+    $old = @($all | Where-Object { $_.Legacy -and $_.Family -in $families })
+    if ($old) {
+        if ($RemoveOldVersions) { Remove-OmpLegacyFont $old }
+        else { Write-Host "Old Nerd Font v2 files share the family name and may shadow the new glyphs:`n  $($old.File -join "`n  ")`nRemove them with:  omp-font $Name -RemoveOldVersions" -ForegroundColor Yellow }
+    }
+    if (-not $NoTerminalConfig -and $IsWindows) { Set-OmpTerminalFont $family }
+    Write-Host 'Open a new terminal tab to see the glyphs.' -ForegroundColor DarkGray
+}
+
 function Get-OmpThemeFile {
     param([string]$Name)
     # Custom themes shipped with this repo (.\themes\**) take precedence over same-named downloaded ones
@@ -244,6 +354,7 @@ Set-Alias omp-list Get-OmpTheme
 Set-Alias omp-set Set-OmpTheme
 Set-Alias omp-install Install-OmpTheme
 Set-Alias omp-upgrade Install-OhMyPosh
+Set-Alias omp-font Install-OmpFont
 
 function Show-OmpHelp {
     Write-Host @"
@@ -264,8 +375,12 @@ function Show-OmpHelp {
                           (-All, -Force, -Apply)
     omp-upgrade           install/upgrade the oh-my-posh binary via winget
                           (-RemoveLegacyModule also drops the old PS module)
+    omp-font [name]       install a Nerd Font (default: picker; e.g. CascadiaCode,
+                          Meslo) and set it in Windows Terminal (-NoTerminalConfig,
+                          -RemoveOldVersions drops v2 files of the same family)
 
-  Notes: previews need a Nerd Font. Switching in the menu only affects the
+  Notes: glyphs need a Nerd Font v3 (omp-font); boxes/garbage mean an old or
+  missing font. Switching in the menu only affects the
   profile for new shells; use  omp-set  / dot-source to change the live shell.
 
 "@ -ForegroundColor Gray
@@ -290,6 +405,7 @@ function Show-OmpMenu {
         Write-Host '  [4] Download themes from GitHub'
         Write-Host '  [5] Help / how it works'
         Write-Host '  [6] Install / upgrade oh-my-posh (winget)'
+        Write-Host '  [7] Install a Nerd Font (fixes boxes in the prompt)'
         Write-Host '  [Q] Quit' -ForegroundColor DarkGray
         $c = (Read-Host "`n  Choose").Trim().ToUpper()
         switch ($c) {
@@ -313,6 +429,14 @@ function Show-OmpMenu {
             }
             '5' { Show-OmpHelp; Read-Host '  Enter to continue' | Out-Null }
             '6' { Install-OhMyPosh; Read-Host '  Enter to continue' | Out-Null }
+            '7' {
+                $cur = @(Get-OmpNerdFont | ForEach-Object { if ($_.Legacy) { "$($_.Family) (v2)" } else { $_.Family } } | Sort-Object -Unique)
+                if ($cur) { Write-Host "  Nerd Fonts installed: $($cur -join ', ')" -ForegroundColor DarkGray }
+                $n = Read-Host '  Font name (blank = interactive picker; e.g. CascadiaCode, Meslo, JetBrainsMono)'
+                $old = (Read-Host '  Also remove old Nerd Font v2 files of the same family? (y/N)').Trim() -match '^y'
+                Install-OmpFont $n -RemoveOldVersions:$old
+                Read-Host '  Enter to continue' | Out-Null
+            }
             { $_ -in 'Q', '' } { return }
         }
     }

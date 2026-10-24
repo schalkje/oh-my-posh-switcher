@@ -5,7 +5,7 @@ A single PowerShell script (`OmpThemes.ps1`) to list, preview, switch and downlo
 ## Requirements
 - PowerShell 7+
 - The standalone `oh-my-posh` binary (v18 or newer), installed with `winget install JanDeDobbeleer.OhMyPosh -s winget` or any method from https://ohmyposh.dev/docs/installation/windows. It is looked up on `PATH` first, then in the usual install folders (winget, installer, scoop, chocolatey).
-- A Nerd Font in your terminal (otherwise preview glyphs look garbled)
+- A **Nerd Font v3** in your terminal. Boxes or odd characters in the prompt mean the font is missing or is an old v2 build ("... Nerd Font Complete"), which lacks newer glyphs such as the CPU and memory icons. `omp-font` (menu option 7) installs one and configures Windows Terminal.
 
 > **Old installations:** the deprecated oh-my-posh *PowerShell module* (`Install-Module oh-my-posh`, v3.x, `Import-Module oh-my-posh` + `Set-PoshPrompt` in the profile) is **not** supported: its bundled v3 binary has a different command line and cannot render current (schema version 3/4) themes. The switcher detects it and warns; run `omp-upgrade` (`Install-OhMyPosh`) or menu option 6 to install the current binary via winget. `omp-set` then comments out the old `Import-Module oh-my-posh` / `Set-PoshPrompt` lines in your profile. Remove the module afterwards with `Uninstall-Module oh-my-posh -AllVersions` (or `omp-upgrade -RemoveLegacyModule`).
 
@@ -32,6 +32,7 @@ Run `.\OmpThemes.ps1` directly (or `omp-menu` once loaded):
 | 4 | Download themes from GitHub (filter, pick numbers or `all`) |
 | 5 | Help |
 | 6 | Install or upgrade the oh-my-posh binary via winget |
+| 7 | Install a Nerd Font and set it as the Windows Terminal font |
 
 ### Commands (after dot-sourcing in your profile)
 
@@ -42,6 +43,7 @@ Run `.\OmpThemes.ps1` directly (or `omp-menu` once loaded):
 | `Set-OmpTheme <name> [-NoPersist]` | `omp-set` | Switch the current shell (Tab completes) and save to profile |
 | `Install-OmpTheme [names] [-List] [-All] [-Force] [-Apply]` | `omp-install` | List or download themes from [JanDeDobbeleer/oh-my-posh/themes](https://github.com/JanDeDobbeleer/oh-my-posh/tree/main/themes); names accept wildcards |
 | `Install-OhMyPosh [-RemoveLegacyModule]` | `omp-upgrade` | Install or upgrade the oh-my-posh binary with winget and make it available in the current session; optionally uninstall the deprecated PowerShell module |
+| `Install-OmpFont [name] [-NoTerminalConfig] [-RemoveOldVersions]` | `omp-font` | Install a Nerd Font with `oh-my-posh font install` (no name opens its picker; names from `oh-my-posh font list`, e.g. `CascadiaCode`, `Meslo`, `JetBrainsMono`). Sets the family as the Windows Terminal default font (and in profiles that already used a Nerd Font); `-RemoveOldVersions` unregisters v2 files of the same family, which would otherwise shadow the new glyphs (they are moved to `OMP_THEMES_DIR\font-backup`) |
 | `Show-OmpMenu` / `Show-OmpHelp` | `omp-menu` / `omp-help` | Menu and help text |
 
 Examples:
@@ -53,6 +55,7 @@ omp-list -Preview                # see them all
 
 ## How it works
 - **Persistence:** `Set-OmpTheme` rewrites the first active `oh-my-posh init pwsh` line in `$PROFILE` (extra active ones and legacy `Import-Module oh-my-posh` / `Set-PoshPrompt` lines are commented out; a `.bak` copy is made first).
+- **Fonts:** `Install-OmpFont` reads the installed Nerd Font files from the font registry (user and machine), parses the family names oh-my-posh reports, prefers the regular variant over Mono/Propo, and rewrites Windows Terminal's `settings.json` (a `.bak` is made first). Other terminals get a hint, e.g. VS Code's `terminal.integrated.fontFamily`.
 - **Binary lookup:** `Get-OmpExe` resolves the executable once per session (PATH, then known install folders, and adds that folder to `PATH` so the profile's init line works too). Without a usable binary every command fails with a message pointing at `omp-upgrade`.
 - **Previews:** rendered with `oh-my-posh print primary`, using a fresh session id (otherwise oh-my-posh reuses the active theme) and UTF-8 output.
 - **Downloads:** GitHub contents API; existing files are skipped unless `-Force`. Set `$env:GITHUB_TOKEN` to avoid the unauthenticated rate limit (60 requests/hour).
